@@ -4,15 +4,13 @@ import re
 section_header_pattern = r'第\w部分\s+(.*?)(\(\d+题，共\d+分\))'
 # 更新后的题干内容匹配正则表达式
 difficulty_pattern = re.compile(r'（(?P<difficulty>[^）]*)）')
-content_pattern = re.compile(r'^\d+、(?:（[^）]*）)?(?P<content>.*?)(?:（\d+分）|$)')
-score_pattern = re.compile(r'（(?P<score>\d+)分）')
+content_score_pattern = re.compile(r'^\d+、(?:（[^）]*）)?(?P<content>.*?)(?:（(?P<score>\d+)分）|$)')
 option_pattern = r'\s*([A-D])、\s*(.*)'
 
 # 有效的难度和题型
 valid_difficulties = {"简单", "中等", "困难"}
 valid_types = {"单选题", "多选题", "判断题", "简答题"}
 errors = []
-
 
 def parse_questions(filename):
     questions = []
@@ -35,7 +33,6 @@ def parse_questions(filename):
                 total_score = count_score_match[1]
                 if section_type not in valid_types:
                     errors.append(f"词法分析错误：无效的题型 '{section_type}' 在第 {line_number} 行")
-                    # raise ValueError(f"词法分析错误：无效的题型 '{section_type}' 在第 {line_number} 行")
                 current_section = {
                     "type": section_type,
                     "count": count,
@@ -45,19 +42,18 @@ def parse_questions(filename):
                 questions.append(current_section)
                 continue
 
-            difficulty_match = difficulty_pattern.search(line)
-            score_match = score_pattern.search(line)
-            content_match = content_pattern.search(line)
+            content_score_match = content_score_pattern.search(line)
+            if content_score_match:
+                content = content_score_match.group('content').strip() if content_score_match.group('content') else None
+                score = content_score_match.group('score') if content_score_match.group('score') else None
 
-            if content_match:
-                difficulty = difficulty_match.group('difficulty') if difficulty_match else None
-                score = score_match.group('score') if score_match else None
-                content = content_match.group('content').strip() if content_match.group('content') else None
-
-                # 检查是否难度值为有效值
-                if difficulty and difficulty not in valid_difficulties:
-                    errors.append(f"词法分析错误：无效的难度 '{difficulty}' 在第 {line_number} 行")
-                    # difficulty = None
+                # 检查是否有难度部分，确保不会误识别
+                difficulty_match = difficulty_pattern.search(line)
+                difficulty = None
+                if difficulty_match:
+                    potential_difficulty = difficulty_match.group('difficulty')
+                    if potential_difficulty in valid_difficulties:
+                        difficulty = potential_difficulty
 
                 current_question = {
                     "difficulty": difficulty,
