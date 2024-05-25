@@ -1,85 +1,122 @@
 import json
-import re
 
-# 读取 token 文件
-def read_tokens_from_file(filename):
-    tokens = []
-    with open(filename, 'r', encoding='utf-8') as file:
-        for line in file:
-            line = line.strip()
-            if not line:
-                continue
-            match = re.match(r'<(\d+),\s*"([^"]*)">', line)
-            if match:
-                token_type = int(match.group(1))
-                value = match.group(2)
-                tokens.append((token_type, value))
-    return tokens
-
-# 读取单词类别表
-def read_word_category(filename):
-    with open(filename, 'r', encoding='utf-8') as file:
+# 读取单词类别表和tokens文件
+def read_word_category(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
         return json.load(file)
 
-# 获取单词类别的名称
-def get_word_category_name(word_category, token_type):
-    for name, type_id in word_category.items():
-        if type_id == token_type:
-            return name
-    return str(token_type)
+def read_tokens(file_path):
+    tokens = []
+    with open(file_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            if line.strip() == "$":
+                tokens.append(("$", "$"))
+                continue
+            parts = line.strip('<>\n').split(', ', 1)
+            token_type = int(parts[0])
+            token_value = parts[1].strip('"')
+            tokens.append((token_type, token_value))
+    return tokens
 
-# 解析器类
+# Token类型编码
+word_category_file = 'word_category.json'
+tokens_file = './output/tokens.txt'
+
+word_category = read_word_category(word_category_file)
+tokens = read_tokens(tokens_file)
+
+# 解析器类定义
 class Parser:
-    def __init__(self, tokens, word_category):
+    def __init__(self, tokens):
         self.tokens = tokens
-        self.word_category = word_category
-        self.index = 0
-        self.line_number = 1
+        self.position = 0
+        self.errors = []
 
     def current_token(self):
-        if self.index < len(self.tokens):
-            return self.tokens[self.index]
+        if self.position < len(self.tokens):
+            return self.tokens[self.position]
         return None
 
+    def advance(self):
+        self.position += 1
+
     def match(self, expected_type):
-        token = self.current_token()
-        if token and token[0] == expected_type:
-            self.index += 1
-            self.line_number += 1
-            return token
-        expected_name = get_word_category_name(self.word_category, expected_type)
-        raise ValueError(f"语法错误: Unexpected token {token}, expected '{expected_name}' at line {self.line_number}")
+        current = self.current_token()
+        if current and current[0] == expected_type:
+            self.advance()
+            return True
+        return False
 
-    def parse_exam(self):
-        self.match(self.word_category["TYPE"])
-        self.match(self.word_category["COUNT"])
-        self.match(self.word_category["TOTAL SCORE"])
-        self.parse_question_list()
-
-    def parse_question_list(self):
-        while self.current_token() and self.current_token()[0] == self.word_category["DIFFICULTY"]:
-            self.parse_question()
+    def parse_option(self):
+        while self.match(word_category["OPTION"]):
+            pass
 
     def parse_question(self):
-        self.match(self.word_category["DIFFICULTY"])
-        self.match(self.word_category["SCORE"])
-        self.match(self.word_category["CONTENT"])
-        self.parse_options_or_empty()
+        if not self.match(word_category["DIFFICULTY"]):
+            self.errors.append(f"Error at token {self.position}: Expected DIFFICULTY, Unexpected token {self.current_token()}")
+            # Skip to the end of the current question
+            self.skip_to_next_question_or_type()
+            return False
+        if not self.match(word_category["SCORE"]):
+            self.errors.append(f"Error at token {self.position}: Expected SCORE, Unexpected token {self.current_token()}")
+            # Skip to the end of the current question
+            self.skip_to_next_question_or_type()
+            return False
+        if not self.match(word_category["CONTENT"]):
+            self.errors.append(f"Error at token {self.position}: Expected CONTENT, Unexpected token {self.current_token()}")
+            # Skip to the end of the current question
+            self.skip_to_next_question_or_type()
+            return False
+        self.parse_option()
+        return True
 
-    def parse_options_or_empty(self):
-        while self.current_token() and self.current_token()[0] == self.word_category["OPTION"]:
-            self.match(self.word_category["OPTION"])
+    def parse_question_block(self):
+        while self.position < len(self.tokens):
+            if not self.parse_question():
+                # If error, skip to the next question or question type
+                continue
+            # If next token is a new question type or end of tokens, break the loop
+            if self.current_token() and self.current_token()[0] in [word_category["TYPE"], "$"]:
+                break
 
-# 示例用法
-tokens_filename = "./output/tokens.txt"
-word_category_filename = "word_category.json"
+    def parse_question_type_block(self):
+        if not self.match(word_category["TYPE"]):
+            self.errors.append(f"Error at token {self.position}: Expected TYPE, Unexpected token {self.current_token()}")
+            return False
+        if not self.match(word_category["COUNT"]):
+            self.errors.append(f"Error at token {self.position}: Expected COUNT, Unexpected token {self.current_token()}")
+            return False
+        if not self.match(word_category["TOTAL SCORE"]):
+            self.errors.append(f"Error at token {self.position}: Expected TOTAL SCORE, Unexpected token {self.current_token()}")
+            return False
+        self.parse_question_block()
+        return True
 
-tokens = read_tokens_from_file(tokens_filename)
-word_category = read_word_category(word_category_filename)
+    def skip_to_next_question_or_type(self):
+        # Skip tokens until we find the next question type or the end of the tokens
+        while self.current_token() and self.current_token()[0] not in [word_category["DIFFICULTY"], "$"]:
+            self.advance()
 
-parser = Parser(tokens, word_category)
-try:
-    parser.parse_exam()
-    print("语法分析完成，无错误")
-except ValueError as e:
-    print(f"语法错误: {e}")
+    def parse(self):
+        while self.position < len(self.tokens):
+            if self.current_token() and self.current_token()[0] == "$":
+                break
+            if not self.parse_question_type_block():
+                # Skip to the next question type or end of tokens
+                self.skip_to_next_question_or_type()
+        # Ensure we end parsing correctly if we reach the end
+        if self.current_token() and self.current_token()[0] == "$":
+            self.advance()
+        return not self.errors
+
+# 主解析器入口
+def main():
+    parser = Parser(tokens)
+    if parser.parse():
+        print("grammar analysis success")
+    else:
+        print("grammar analysis failed")
+        for error in parser.errors:
+            print(error)
+
+main()
