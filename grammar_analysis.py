@@ -48,8 +48,23 @@ class Parser:
         return False
 
     def parse_option(self):
-        while self.match(word_category["OPTION"]):
-            pass
+        expected_option = "A"
+        while self.current_token() and self.current_token()[0] == word_category["OPTION"]:
+            current_token = self.current_token()
+            option_value = current_token[1]
+            if not option_value.startswith(expected_option + "、"):
+                self.errors.append(f"Error at token {self.position}: Expected option {expected_option}, got {current_token}")
+                # Skip to the end of the current question
+                self.skip_to_next_question_or_type()
+                return False
+            if option_value == expected_option + "、":
+                self.errors.append(f"Error at token {self.position}: Option {expected_option} content is empty")
+                # Skip to the end of the current question
+                self.skip_to_next_question_or_type()
+                return False
+            expected_option = chr(ord(expected_option) + 1)
+            self.advance()
+        return True
 
     def parse_question(self):
         if not self.match(word_category["DIFFICULTY"]):
