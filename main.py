@@ -71,7 +71,8 @@ def lexical_analysis(filename):
                     potential_difficulty = difficulty_match.group('difficulty')
                     if potential_difficulty in valid_difficulties:
                         difficulty = potential_difficulty
-
+                    if potential_difficulty and potential_difficulty not in valid_difficulties:
+                        errors.append(f"词法分析错误：无效的难度 '{potential_difficulty}' 在第 {line_number} 行")
                 current_question = {
                     "difficulty": difficulty,
                     "content": content,
