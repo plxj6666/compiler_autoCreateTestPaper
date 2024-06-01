@@ -60,7 +60,6 @@ class SemanticAnalyzer:
             self.index += 1
             return token
         expected_name = get_word_category_name(self.word_category, expected_type)
-        self.errors.append(f"语法错误: Unexpected token {token}, expected '{expected_name}' at line {token[2]}")
         self.index += 1  # Skip this token and continue
         return None
 
@@ -87,36 +86,38 @@ class SemanticAnalyzer:
                 self.errors.append(f"语义错误: 预期总分数 {self.expected_total_score}, 但实际分数为 {self.actual_total_score} at line {current_token[2] if current_token else 'EOF'}")
 
     def analyze_question_list(self):
-        while self.current_token() and self.current_token()[0] == self.word_category["DIFFICULTY"]:
+        while self.current_token() and self.current_token()[0] in [self.word_category["DIFFICULTY"], self.word_category["SCORE"], self.word_category["CONTENT"]]:
             self.analyze_question()
 
     def analyze_question(self):
         difficulty_token = self.match(self.word_category["DIFFICULTY"])
         score_token = self.match(self.word_category["SCORE"])
         content_token = self.match(self.word_category["CONTENT"])
-        if not difficulty_token or not score_token or not content_token:
-            return
-        score = int(score_token[1])
-        difficulty = difficulty_token[1]
+
+        difficulty = difficulty_token[1] if difficulty_token else None
+        score = int(score_token[1]) if score_token else 0
+        content = content_token[1] if content_token else ""
 
         # 设置难度和分数的映射
-        if self.difficulty_score_map[difficulty] is None:
+        if difficulty and self.difficulty_score_map[difficulty] is None:
             self.difficulty_score_map[difficulty] = score
-        elif self.difficulty_score_map[difficulty] != score:
-            self.errors.append(f"语义错误: 难度 '{difficulty}' 的题目分数应为 {self.difficulty_score_map[difficulty]}，但实际分数为 {score} at line {score_token[2]}")
+        elif difficulty and self.difficulty_score_map[difficulty] != score:
+            self.errors.append(f"语义错误: 难度 '{difficulty}' 的题目分数应为 {self.difficulty_score_map[difficulty]}，但实际分数为 {score} at line {score_token[2] if score_token else 'unknown'}")
 
         # 检查分数是否满足简单 < 中等 < 困难
-        if (self.difficulty_score_map["简单"] is not None and
+        if difficulty and (
+            self.difficulty_score_map["简单"] is not None and
             self.difficulty_score_map["中等"] is not None and
-            self.difficulty_score_map["困难"] is not None):
+            self.difficulty_score_map["困难"] is not None
+        ):
             if not (self.difficulty_score_map["简单"] < self.difficulty_score_map["中等"] < self.difficulty_score_map["困难"]):
-                self.errors.append(f"语义错误: 题目分数不满足 简单 < 中等 < 困难 的要求 at line {score_token[2]}")
+                self.errors.append(f"语义错误: 题目分数不满足 简单 < 中等 < 困难 的要求 at line {score_token[2] if score_token else 'unknown'}")
 
         self.actual_total_score += score
         self.actual_count += 1
         options = self.analyze_options_or_empty()
 
-        question = (self.current_type, difficulty, f"{score}分", content_token[1]) + tuple(options)
+        question = (self.current_type, difficulty, f"{score}分", content) + tuple(options)
         self.questions.append(question)
 
     def analyze_options_or_empty(self):

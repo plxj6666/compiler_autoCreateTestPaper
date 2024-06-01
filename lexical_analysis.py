@@ -3,8 +3,8 @@ import re
 # 正则表达式预定义
 section_header_pattern = r'第\w部分\s+(.*?)(\(\d+题，共\d+分\))'
 # 更新后的题干内容匹配正则表达式
-difficulty_pattern = re.compile(r'（(?P<difficulty>[^）]*)）')
-content_score_pattern = re.compile(r'^\d+、(?:（[^）]*）)?(?P<content>.*?)(?:（(?P<score>\d+)分）|$)')
+difficulty_pattern = re.compile(r'\((?P<difficulty>[^)]*)\)')
+content_score_pattern = re.compile(r'^\d+、(?:\([^）]*\))?(?P<content>.*?)(?:（(?P<score>\d+)分）|$)')
 option_pattern = r'\s*([A-D])、\s*(.*)'
 
 # 有效的难度和题型
